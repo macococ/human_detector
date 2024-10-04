@@ -1,2 +1,5 @@
 # human_detector
-人検出ノード
+yolo v8を使った人検出ノード
+
+```bash
+```
