@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'human_detector = '+ package_name +'.human_detector:main',
+            'depth_human_detector = '+ package_name +'.depth_human_detector:main',
         ],
     },
 )
