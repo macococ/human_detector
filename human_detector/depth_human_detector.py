@@ -21,18 +21,17 @@ class HumanDetector(Node):
 		super().__init__(self.SELFNODE)
 		self.get_logger().info("%s initializing..." % (self.SELFNODE))
 		# モデルの読み込み
-		model_name = self.param("model_name", 'yolov8n-seg.pt').string_value # yolov8n.pt, yolov8x-seg.pt ,yolov8x-pose.pt
+		model_name = self.param("model_name", 'yolov8x-seg.pt').string_value # yolov8n.pt, yolov8x-seg.pt ,yolov8x-pose.pt
 		self.model = YOLO(model_name)
+		# self.model.export(format="engine")
+		# self.tensorrt_model = YOLO(model_name.replace('.pt', '.engine'))
 		# ros2 init
 		self.human_image_pub_ = self.create_publisher(Image,'human_detector/depth_human_image', 1)
 		self.resaul_image_pub_ = self.create_publisher(Image,'human_detector/resaul_image', 1)
-		# self.image_sub_ = self.create_subscription(Image,'image_raw', self.image_callback, qos_profile=ReliabilityPolicy.RELIABLE)
-		# self.depth_mage_sub_ = self.create_subscription(Image,'depth', self.depth_image_callback, qos_profile=ReliabilityPolicy.RELIABLE)
 		self.image_sub_ = Subscriber(self,Image,'image_raw', qos_profile=ReliabilityPolicy.RELIABLE)
 		self.depth_mage_sub_ = Subscriber(self,Image,'depth', qos_profile=ReliabilityPolicy.RELIABLE)
-		self.time_sync = TimeSynchronizer([self.image_sub_, self.depth_mage_sub_],10)
+		self.time_sync = TimeSynchronizer([self.image_sub_, self.depth_mage_sub_],100)
 		self.time_sync.registerCallback(self.sync_callback)
-		self.depth_ = self.image_ = None
 		self.bridge_ = CvBridge()
 
 	def __del__(self):
@@ -45,15 +44,12 @@ class HumanDetector(Node):
 
 	def sync_callback(self, image, depth):
 		# print("image_callback")
-		self.image_ = image
-		self.depth_ = depth
-		if self.depth_ is None:
-			return
-		raw_image = self.bridge_.imgmsg_to_cv2(self.image_)
-		d_img = self.bridge_.imgmsg_to_cv2(self.depth_)
+		raw_image = self.bridge_.imgmsg_to_cv2(image)
+		d_img = self.bridge_.imgmsg_to_cv2(depth)
 		img = cv2.cvtColor(raw_image, cv2.COLOR_BGR2RGB)
 		# 人物検出
-		results = self.model.track(source=img, show=False, save=True)
+		# results = self.tensorrt_model.track(source=img, show=False, save=True)
+		results = self.model.track(source=img, show=False, save=False)
 		# get predict result
 		human_depth_image = None
 		human_mask = np.zeros(d_img.shape, dtype = np.uint16)
@@ -66,15 +62,15 @@ class HumanDetector(Node):
 			# print(f"Number of boxes = {len(boxes)}")
 			# print("-----")
 			for box in boxes:
-				ids = box.id
-				pos = box.xyxy[0]
-				conf = box.conf[0].item()
 				cls = int(box.cls[0].item())
-				clsnm = names[cls]
 				i += 1
-				# keypoint = result.keypoints.xy[i]
-				if clsnm != "person":
+				if names[cls] != "person":
 					continue
+				# ids = box.id
+				pos = box.xyxy[0]
+				# conf = box.conf[0].item()
+				# clsnm = names[cls]
+				# keypoint = result.keypoints.xy[i]
 				# print(f"+++++ Box-{i}")
 				# print(f"class = {cls}:{clsnm}"); # 検知アイテムのクラス
 				# print(f"conf = {conf:.5f}"); # 検知アイテムの信頼度
@@ -104,11 +100,11 @@ class HumanDetector(Node):
 			human_depth_image = cv2.bitwise_and(d_img, human_mask)
 
 		img_msg = self.bridge_.cv2_to_imgmsg(results_frame, encoding='bgr8')
-		img_msg.header = self.image_.header
+		img_msg.header = image.header
 		self.resaul_image_pub_.publish(img_msg)
 		if human_depth_image is not None:
 			img_msg = self.bridge_.cv2_to_imgmsg(human_depth_image, encoding='16UC1')
-			img_msg.header = self.image_.header
+			img_msg.header = image.header
 			self.human_image_pub_.publish(img_msg)
 
 def main(args=None):
